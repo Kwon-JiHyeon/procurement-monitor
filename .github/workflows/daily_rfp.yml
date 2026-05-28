@@ -1,0 +1,35 @@
+name: 나라장터 RFP 모니터링
+
+on:
+  schedule:
+    - cron: '0 22 * * 0-4'
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 3.12 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: RFP 모니터링 실행
+        env:
+          DATA_GO_API_KEY:   ${{ secrets.DATA_GO_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SMTP_HOST:         ${{ secrets.SMTP_HOST }}
+          SMTP_PORT:         ${{ secrets.SMTP_PORT }}
+          SMTP_USER:         ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD:     ${{ secrets.SMTP_PASSWORD }}
+          MAIL_FROM:         ${{ secrets.MAIL_FROM }}
+          MAIL_TO:           ${{ secrets.MAIL_TO }}
+        run: python monitor.py

@@ -256,9 +256,8 @@ def send_email(subject, html_body):
     msg['To']      = ', '.join(recipients)
     msg.attach(MIMEText(html_body, 'html', 'utf-8'))
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as srv:
+    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as srv:
         srv.ehlo()
-        srv.starttls()
         srv.login(SMTP_USER, SMTP_PASS)
         srv.sendmail(MAIL_FROM, recipients, msg.as_string())
 

@@ -4,12 +4,11 @@
 ──────────────────────────
 - 평일 아침 7시 (KST) GitHub Actions 실행
 - 입찰공고 + 사전규격공고 수집
-- Claude API로 HTML 요약 생성
+- Python으로 HTML 테이블 직접 생성 (외부 AI API 불필요)
 - 회사 SMTP로 이메일 발송
 """
 
 import os
-import json
 import smtplib
 import requests
 from datetime import datetime, timedelta
@@ -18,18 +17,17 @@ from email.mime.text import MIMEText
 from zoneinfo import ZoneInfo
 
 # ── 환경변수 (GitHub Secrets) ─────────────────────────────
-DATA_API_KEY  = os.environ['DATA_GO_API_KEY']    # 공공데이터포털 인증키
-ANTHROPIC_KEY = os.environ['ANTHROPIC_API_KEY']  # Claude API 키
-SMTP_HOST     = os.environ['SMTP_HOST']           # 예: mail.yourcompany.com
-SMTP_PORT     = int(os.environ.get('SMTP_PORT', '587'))
-SMTP_USER     = os.environ['SMTP_USER']           # 발신 계정
-SMTP_PASS     = os.environ['SMTP_PASSWORD']       # 발신 비밀번호
-MAIL_FROM     = os.environ['MAIL_FROM']           # 발신자 주소
-MAIL_TO       = os.environ['MAIL_TO']             # 수신자 (쉼표 구분 가능)
+DATA_API_KEY = os.environ['DATA_GO_API_KEY']
+SMTP_HOST    = os.environ['SMTP_HOST']
+SMTP_PORT    = int(os.environ.get('SMTP_PORT', '587'))
+SMTP_USER    = os.environ['SMTP_USER']
+SMTP_PASS    = os.environ['SMTP_PASSWORD']
+MAIL_FROM    = os.environ['MAIL_FROM']
+MAIL_TO      = os.environ['MAIL_TO']
 
 # ── 검색 조건 ─────────────────────────────────────────────
 KEYWORDS  = ['ISP', 'ISMP', '정보화전략']
-PRDLST_CD = '8010150701'   # 세부품명번호: 정보전략계획수립(ISP)
+PRDLST_CD = '8010150701'
 
 # ── API 엔드포인트 ────────────────────────────────────────
 BID_URL = 'https://apis.data.go.kr/1230000/BidPublicInfoService04/getBidPblancListInfoServc'
@@ -42,9 +40,8 @@ KST = ZoneInfo('Asia/Seoul')
 # 1. 날짜 범위
 # ─────────────────────────────────────────────────────────
 def get_date_range():
-    """오늘 기준 조회 범위 반환 (월요일이면 금-월 포함)"""
     today = datetime.now(KST)
-    days_back = 3 if today.weekday() == 0 else 1   # 월요일 → 금요일부터
+    days_back = 3 if today.weekday() == 0 else 1  # 월요일 → 금요일부터
     start = today - timedelta(days=days_back)
     return (
         start.strftime('%Y%m%d') + '0000',
@@ -53,13 +50,13 @@ def get_date_range():
 
 
 # ─────────────────────────────────────────────────────────
-# 2. API 호출 공통 함수
+# 2. API 호출
 # ─────────────────────────────────────────────────────────
 def _call(url, params, bucket, seen, id_key):
     try:
         r = requests.get(url, params=params, timeout=30)
         r.raise_for_status()
-        body = r.json().get('response', {}).get('body', {})
+        body  = r.json().get('response', {}).get('body', {})
         items = body.get('items', [])
         if isinstance(items, dict):
             items = [items]
@@ -69,12 +66,9 @@ def _call(url, params, bucket, seen, id_key):
                 seen.add(uid)
                 bucket.append(item)
     except Exception as e:
-        print(f'  ⚠ API 오류 ({url}): {e}')
+        print(f'  ⚠ API 오류: {e}')
 
 
-# ─────────────────────────────────────────────────────────
-# 3. 입찰공고
-# ─────────────────────────────────────────────────────────
 def fetch_bid_notices(start_dt, end_dt):
     results, seen = [], set()
     base = {
@@ -86,20 +80,16 @@ def fetch_bid_notices(start_dt, end_dt):
     }
     for kw in KEYWORDS:
         _call(BID_URL, {**base, 'bidNtceNm': kw}, results, seen, 'bidNtceNo')
-    # 세부품명번호로 추가 조회
     _call(BID_URL, {**base, 'dtilPrdlstCd': PRDLST_CD}, results, seen, 'bidNtceNo')
     return results
 
 
-# ─────────────────────────────────────────────────────────
-# 4. 사전규격공고
-# ─────────────────────────────────────────────────────────
 def fetch_pre_notices(start_dt, end_dt):
     results, seen = [], set()
     base = {
         'serviceKey': DATA_API_KEY,
         'numOfRows': '100', 'pageNo': '1',
-        'inqryBgnDt': start_dt[:8],   # yyyyMMdd
+        'inqryBgnDt': start_dt[:8],
         'inqryEndDt': end_dt[:8],
         'type': 'json',
     }
@@ -110,67 +100,156 @@ def fetch_pre_notices(start_dt, end_dt):
 
 
 # ─────────────────────────────────────────────────────────
-# 5. Claude API로 HTML 이메일 생성
+# 3. HTML 생성 (Python 직접 생성, AI API 없음)
 # ─────────────────────────────────────────────────────────
-def make_html_with_claude(bid_list, pre_list, today_str):
-    bid_json = json.dumps(bid_list, ensure_ascii=False, indent=2) if bid_list else '없음'
-    pre_json = json.dumps(pre_list, ensure_ascii=False, indent=2) if pre_list else '없음'
+STYLE = """
+<style>
+  body { font-family: '맑은고딕', Arial, sans-serif; background:#f5f6fa; margin:0; padding:20px; }
+  .wrap { max-width:720px; margin:0 auto; background:#fff; border-radius:8px;
+          box-shadow:0 2px 8px rgba(0,0,0,.08); overflow:hidden; }
+  .header { background:#1a4b8c; color:#fff; padding:20px 24px; }
+  .header h2 { margin:0; font-size:16px; font-weight:600; }
+  .header p  { margin:4px 0 0; font-size:12px; opacity:.8; }
+  .body { padding:20px 24px; }
+  .section-title { font-size:13px; font-weight:700; color:#1a4b8c;
+                   border-left:4px solid #1a4b8c; padding-left:8px;
+                   margin:20px 0 10px; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th { background:#1a4b8c; color:#fff; padding:8px 10px; text-align:left; }
+  td { padding:8px 10px; border-bottom:1px solid #eee; vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:#f0f4ff; }
+  a { color:#1a4b8c; text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .empty { color:#999; font-size:12px; padding:12px 0; }
+  .footer { background:#f5f6fa; padding:12px 24px;
+            font-size:11px; color:#aaa; border-top:1px solid #eee; }
+  .badge { display:inline-block; background:#e8f0fe; color:#1a4b8c;
+           border-radius:3px; padding:1px 6px; font-size:11px; font-weight:600; }
+</style>
+"""
 
-    prompt = f"""아래 데이터를 바탕으로 업무용 HTML 이메일 본문을 작성해주세요.
-날짜: {today_str}
+def fmt_money(val):
+    """숫자를 억원 단위로 포맷"""
+    try:
+        n = float(str(val).replace(',', ''))
+        if n >= 1e8:
+            return f'{n/1e8:.1f}억원'
+        if n >= 1e4:
+            return f'{n/1e4:.0f}만원'
+        return f'{int(n):,}원'
+    except Exception:
+        return val or '-'
 
-[입찰공고 원시 데이터]
-{bid_json}
+def fmt_date(val):
+    """날짜 문자열 포맷 (YYYYMMDDhhmm → YYYY-MM-DD HH:MM)"""
+    s = str(val or '').replace('-', '').replace(':', '').replace(' ', '')
+    if len(s) >= 12:
+        return f"{s[:4]}-{s[4:6]}-{s[6:8]} {s[8:10]}:{s[10:12]}"
+    if len(s) >= 8:
+        return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+    return val or '-'
 
-[사전규격공고 원시 데이터]
-{pre_json}
+def bid_rows(items):
+    if not items:
+        return '<tr><td colspan="5" class="empty">해당 기간 공고 없음</td></tr>'
+    rows = []
+    for it in items:
+        name    = it.get('bidNtceNm', '-')
+        url     = it.get('bidNtceUrl', '')
+        org     = it.get('ntceInsttNm', '-')
+        money   = fmt_money(it.get('presmptPrce', '') or it.get('asignBdgtAmt', ''))
+        deadline= fmt_date(it.get('bidClseDt', '') or it.get('opengDt', ''))
+        no      = it.get('bidNtceNo', '-')
+        title   = f'<a href="{url}" target="_blank">{name}</a>' if url else name
+        rows.append(
+            f'<tr><td>{title}</td><td>{org}</td>'
+            f'<td style="white-space:nowrap">{money}</td>'
+            f'<td style="white-space:nowrap">{deadline}</td>'
+            f'<td style="color:#888">{no}</td></tr>'
+        )
+    return '\n'.join(rows)
 
-작성 규칙:
-- <div>로 시작하는 HTML fragment만 출력 (DOCTYPE/html/body 태그 없이)
-- 인라인 CSS 사용, 폰트: 맑은고딕, sans-serif
-- 섹션 구분: ① 입찰공고, ② 사전규격공고
-- 각 공고: 공고명 / 발주처 / 사업금액 / 마감일 / 공고번호 표시
-- 공고명은 가능하면 나라장터 링크로 연결 (bidNtceUrl 필드 활용)
-- 공고 없는 섹션은 "해당 기간 공고 없음" 회색 텍스트로 표시
-- 상단 인사말: "안녕하세요, {today_str} 나라장터 RFP 현황입니다."
-- 하단 푸터: 검색조건(키워드·세부품명번호) 회색 소문자로 표시
-- 전체적으로 깔끔한 테이블 레이아웃, 헤더 배경 #1a4b8c 흰색 글씨"""
+def pre_rows(items):
+    if not items:
+        return '<tr><td colspan="4" class="empty">해당 기간 공고 없음</td></tr>'
+    rows = []
+    for it in items:
+        name    = it.get('prdctClsfcNoNm', '') or it.get('bfSpecRgstNo', '-')
+        org     = it.get('ntceInsttNm', '-')
+        money   = fmt_money(it.get('totPrce', '') or it.get('asignBdgtAmt', ''))
+        deadline= fmt_date(it.get('opninRcptDdlnDt', '') or it.get('rgstDt', ''))
+        no      = it.get('bfSpecRgstNo', '-')
+        rows.append(
+            f'<tr><td>{name}</td><td>{org}</td>'
+            f'<td style="white-space:nowrap">{money}</td>'
+            f'<td style="white-space:nowrap">{deadline}</td></tr>'
+        )
+    return '\n'.join(rows)
 
-    resp = requests.post(
-        'https://api.anthropic.com/v1/messages',
-        headers={
-            'x-api-key': ANTHROPIC_KEY,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json',
-        },
-        json={
-            'model': 'claude-sonnet-4-20250514',
-            'max_tokens': 4096,
-            'messages': [{'role': 'user', 'content': prompt}],
-        },
-        timeout=60,
-    )
-    resp.raise_for_status()
-    return resp.json()['content'][0]['text']
+def make_html(bid_list, pre_list, today_str, start_dt, end_dt):
+    total = len(bid_list) + len(pre_list)
+    period = f"{start_dt[:4]}-{start_dt[4:6]}-{start_dt[6:8]} ~ {end_dt[:4]}-{end_dt[4:6]}-{end_dt[6:8]}"
 
+    return f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">{STYLE}</head>
+<body><div class="wrap">
+  <div class="header">
+    <h2>📋 나라장터 RFP 현황</h2>
+    <p>{today_str} &nbsp;|&nbsp; 총 <strong>{total}건</strong> &nbsp;|&nbsp; 조회기간: {period}</p>
+  </div>
+  <div class="body">
+
+    <div class="section-title">① 입찰공고 <span class="badge">{len(bid_list)}건</span></div>
+    <table>
+      <thead><tr>
+        <th style="width:35%">공고명</th>
+        <th style="width:22%">발주처</th>
+        <th style="width:13%">금액</th>
+        <th style="width:17%">마감일</th>
+        <th style="width:13%">공고번호</th>
+      </tr></thead>
+      <tbody>{bid_rows(bid_list)}</tbody>
+    </table>
+
+    <div class="section-title">② 사전규격공고 <span class="badge">{len(pre_list)}건</span></div>
+    <table>
+      <thead><tr>
+        <th style="width:40%">공고명</th>
+        <th style="width:25%">발주처</th>
+        <th style="width:15%">금액</th>
+        <th style="width:20%">의견마감일</th>
+      </tr></thead>
+      <tbody>{pre_rows(pre_list)}</tbody>
+    </table>
+
+  </div>
+  <div class="footer">
+    검색 키워드: ISP · ISMP · 정보화전략 &nbsp;|&nbsp; 세부품명번호: {PRDLST_CD} &nbsp;|&nbsp;
+    자동발송 (GitHub Actions)
+  </div>
+</div></body></html>"""
 
 def make_empty_html(today_str):
-    return f"""<div style="font-family:'맑은고딕',sans-serif;max-width:700px;padding:24px;">
-  <p>안녕하세요, {today_str} 나라장터 RFP 현황입니다.</p>
-  <p style="color:#555;">해당 기간 내 신규 공고가 없습니다.</p>
-  <hr style="border:none;border-top:1px solid #eee;margin:20px 0;">
-  <p style="color:#aaa;font-size:11px;">
-    검색 키워드: ISP, ISMP, 정보화전략 &nbsp;|&nbsp; 세부품명번호: {PRDLST_CD}
-  </p>
-</div>"""
+    return f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">{STYLE}</head>
+<body><div class="wrap">
+  <div class="header">
+    <h2>📋 나라장터 RFP 현황</h2>
+    <p>{today_str}</p>
+  </div>
+  <div class="body">
+    <p class="empty" style="padding:20px 0">해당 기간 내 신규 공고가 없습니다.</p>
+  </div>
+  <div class="footer">
+    검색 키워드: ISP · ISMP · 정보화전략 &nbsp;|&nbsp; 세부품명번호: {PRDLST_CD}
+  </div>
+</div></body></html>"""
 
 
 # ─────────────────────────────────────────────────────────
-# 6. 이메일 발송
+# 4. 이메일 발송
 # ─────────────────────────────────────────────────────────
 def send_email(subject, html_body):
     recipients = [r.strip() for r in MAIL_TO.split(',')]
-
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
     msg['From']    = MAIL_FROM
@@ -187,7 +266,7 @@ def send_email(subject, html_body):
 
 
 # ─────────────────────────────────────────────────────────
-# 7. 메인
+# 5. 메인
 # ─────────────────────────────────────────────────────────
 def main():
     today     = datetime.now(KST)
@@ -208,7 +287,7 @@ def main():
         html_body = make_empty_html(today_str)
     else:
         subject   = f'[나라장터] {today_str} RFP 현황 — 총 {total}건'
-        html_body = make_html_with_claude(bid_list, pre_list, today_str)
+        html_body = make_html(bid_list, pre_list, today_str, start_dt, end_dt)
 
     send_email(subject, html_body)
 

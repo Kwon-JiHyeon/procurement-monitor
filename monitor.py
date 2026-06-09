@@ -219,7 +219,7 @@ def main():
         subject   = f'[나라장터] {today_str} 신규 공고 없음'
         html_body = make_empty_html(today_str)
     else:
-        subject   = f'[나라장터] {today_str} 나라장터 현황'
+        subject   = f'[나라장터] {today_str} 현황 - 총 {total}건'
         html_body = make_html(bid_list, pre_list, today_str)
     send_email(subject, html_body)
 

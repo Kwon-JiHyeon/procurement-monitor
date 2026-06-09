@@ -101,7 +101,7 @@ def fmt_date(val):
 
 def make_html(bid_list, pre_list, today_str):
     font = "font-family:'맑은 고딕','Malgun Gothic',Arial,sans-serif;"
-    
+
     # 입찰공고 섹션
     bid_section = ''
     for i, it in enumerate(bid_list, 1):
@@ -110,12 +110,11 @@ def make_html(bid_list, pre_list, today_str):
         money    = fmt_money(it.get('presmptPrce','') or it.get('asignBdgtAmt',''))
         deadline = fmt_date(it.get('bidClseDt','') or it.get('opengDt',''))
         no       = it.get('bidNtceNo', '-')
-        link     = f"https://www.g2b.go.kr:8101/ep/invitation/publish/bidInfoDtl.do?bidno={no}&bidseq=000"
+        ord_     = it.get('bidNtceOrd', '000')
+        link     = f"https://www.g2b.go.kr:8101/ep/invitation/publish/bidInfoDtl.do?bidno={no}&bidseq={ord_}"
 
         bid_section += f"""
-<p style="{font}margin:0 0 4px 0">
-  <span style="font-size:14px;font-weight:bold">{i}. {name}</span>
-</p>
+<p style="{font}margin:0 0 4px 0"><span style="font-size:14px;font-weight:bold">{i}. {name}</span></p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">발주처 : {org}</p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">금액 : {money}</p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">제안서 마감일 : {deadline}</p>
@@ -132,14 +131,15 @@ def make_html(bid_list, pre_list, today_str):
         org      = it.get('orderInsttNm', '-')
         money    = fmt_money(it.get('asignBdgtAmt',''))
         deadline = fmt_date(it.get('opninRgstClseDt',''))
+        no       = it.get('bfSpecRgstNo', '-')
+        link     = f"https://www.g2b.go.kr/pt/menu/selectSubFrame.do?framesrc=/pt/menu/frameBidPblanc/selectBidPblancBidSearchDtl.do?bidNtceNo={no}"
 
         pre_section += f"""
-<p style="{font}margin:0 0 4px 0">
-  <span style="font-size:14px;font-weight:bold">{i}. {name}</span>
-</p>
+<p style="{font}margin:0 0 4px 0"><span style="font-size:14px;font-weight:bold">{i}. {name}</span></p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">발주처 : {org}</p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">금액 : {money}</p>
-<p style="{font}font-size:13px;margin:0 0 16px 0;color:#222">의견 마감일 : {deadline}</p>
+<p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">의견 마감일 : {deadline}</p>
+<p style="{font}font-size:13px;margin:0 0 16px 0;color:#222">공고 링크 : {link}</p>
 """
 
     if not pre_list:
@@ -151,25 +151,14 @@ def make_html(bid_list, pre_list, today_str):
 <head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:20px;background:#fff">
 <div style="max-width:700px">
-
-  <p style="{font}font-size:13px;color:#444;margin:0 0 20px 0">
-    안녕하세요 이사님, {today_str} 나라장터 현황입니다.
-  </p>
-
+  <p style="{font}font-size:13px;color:#444;margin:0 0 20px 0">안녕하세요 이사님, {today_str} 나라장터 현황입니다.</p>
   <p style="{font}font-size:15px;font-weight:bold;margin:0 0 12px 0">※ 입찰공고</p>
   {bid_section}
-
   {divider}
-
   <p style="{font}font-size:15px;font-weight:bold;margin:0 0 12px 0">※ 사전규격</p>
   {pre_section}
-
   {divider}
-
-  <p style="{font}font-size:11px;color:#999;margin:0">
-    검색 키워드: ISP · ISMP · 정보화전략 &nbsp;|&nbsp; 세부품명번호: {PRDLST_CD} &nbsp;|&nbsp; 자동발송 (GitHub Actions)
-  </p>
-
+  <p style="{font}font-size:11px;color:#999;margin:0">검색 키워드: ISP · ISMP · 정보화전략 &nbsp;|&nbsp; 세부품명번호: {PRDLST_CD} &nbsp;|&nbsp; 자동발송 (GitHub Actions)</p>
 </div>
 </body></html>"""
 
@@ -179,16 +168,10 @@ def make_empty_html(today_str):
 <head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:20px;background:#fff">
 <div style="max-width:700px">
-  <p style="{font}font-size:13px;color:#444;margin:0 0 20px 0">
-    안녕하세요 이사님, {today_str} 나라장터 현황입니다.
-  </p>
-  <p style="{font}font-size:13px;color:#888;margin:0 0 20px 0">
-    해당 기간 내 신규 공고가 없습니다.
-  </p>
+  <p style="{font}font-size:13px;color:#444;margin:0 0 20px 0">안녕하세요 이사님, {today_str} 나라장터 현황입니다.</p>
+  <p style="{font}font-size:13px;color:#888;margin:0 0 20px 0">해당 기간 내 신규 공고가 없습니다.</p>
   <hr style="border:none;border-top:1px solid #ddd;margin:16px 0">
-  <p style="{font}font-size:11px;color:#999;margin:0">
-    검색 키워드: ISP · ISMP · 정보화전략 &nbsp;|&nbsp; 세부품명번호: {PRDLST_CD}
-  </p>
+  <p style="{font}font-size:11px;color:#999;margin:0">검색 키워드: ISP · ISMP · 정보화전략 &nbsp;|&nbsp; 세부품명번호: {PRDLST_CD}</p>
 </div>
 </body></html>"""
 
@@ -219,7 +202,7 @@ def main():
         subject   = f'[나라장터] {today_str} 신규 공고 없음'
         html_body = make_empty_html(today_str)
     else:
-        subject   = f'[나라장터] {today_str} 현황 - 총 {total}건'
+        subject   = f'[나라장터] {today_str} RFP 현황 — 총 {total}건'
         html_body = make_html(bid_list, pre_list, today_str)
     send_email(subject, html_body)
 

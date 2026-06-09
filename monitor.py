@@ -3,7 +3,7 @@
 나라장터 RFP 자동 모니터링
 ──────────────────────────
 - 평일 아침 7시 (KST) GitHub Actions 실행
-- 입찰공고 + 사전규격공고 수집 (개요·사업기간·링크 포함)
+- 입찰공고 + 사전규격공고 수집 후 키워드 필터링
 - 회사 SMTP로 이메일 발송
 """
 
@@ -28,14 +28,11 @@ MAIL_TO      = os.environ['MAIL_TO']
 KEYWORDS  = ['ISP', 'ISMP', '정보화전략']
 PRDLST_CD = '8010150701'
 
-# ── API 엔드포인트 ────────────────────────────────────────
-BID_LIST_URL  = 'https://apis.data.go.kr/1230000/BidPublicInfoService04/getBidPblancListInfoServc'
-BID_DTL_URL   = 'https://apis.data.go.kr/1230000/BidPublicInfoService04/getBidPblancInfoServc04'
-PRE_URL       = 'https://apis.data.go.kr/1230000/PrePrddlInfoService/getPrePrddlInfoListServc'
-PRE_DTL_URL   = 'https://apis.data.go.kr/1230000/PrePrddlInfoService/getPrePrddlInfoServc'
+# ── 정확한 API 엔드포인트 (공식 문서 기준) ──────────────
+BID_URL = 'http://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServc'
+PRE_URL = 'http://apis.data.go.kr/1230000/ao/HrcspSsstndrdInfoService/getPublicPrcureThngInfoServc'
 
 KST = ZoneInfo('Asia/Seoul')
-MAX_DETAIL    = 15   # 상세 조회 최대 건수 (API 부하 방지)
 
 
 # ─────────────────────────────────────────────────────────
@@ -52,92 +49,100 @@ def get_date_range():
 
 
 # ─────────────────────────────────────────────────────────
-# 2. API 호출
+# 2. 키워드 매칭 (공고명에 키워드 포함 여부)
+# ─────────────────────────────────────────────────────────
+def match_keywords(text):
+    text_upper = str(text or '').upper()
+    for kw in KEYWORDS:
+        if kw.upper() in text_upper:
+            return True
+    return False
+
+def match_prdlst(prdlst_str):
+    """세부품명번호 문자열에 PRDLST_CD 포함 여부"""
+    return PRDLST_CD in str(prdlst_str or '')
+
+
+# ─────────────────────────────────────────────────────────
+# 3. API 호출
 # ─────────────────────────────────────────────────────────
 def _get(url, params):
     try:
         r = requests.get(url, params=params, timeout=30)
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+        body = data.get('response', {}).get('body', {})
+        items = body.get('items', [])
+        if isinstance(items, dict):
+            items = [items]
+        return items or []
     except Exception as e:
-        print(f'  ⚠ API 오류: {e}')
-        return {}
-
-def _collect(url, params, bucket, seen, id_key):
-    body  = _get(url, params).get('response', {}).get('body', {})
-    items = body.get('items', [])
-    if isinstance(items, dict):
-        items = [items]
-    for item in (items or []):
-        uid = item.get(id_key, '')
-        if uid and uid not in seen:
-            seen.add(uid)
-            bucket.append(item)
+        print(f'  ⚠ API 오류 ({url}): {e}')
+        return []
 
 
 # ─────────────────────────────────────────────────────────
-# 3. 입찰공고 수집 + 상세 조회
+# 4. 입찰공고 수집 (전체 조회 후 Python 필터링)
 # ─────────────────────────────────────────────────────────
 def fetch_bid_notices(start_dt, end_dt):
-    results, seen = [], set()
-    base = {
-        'serviceKey': DATA_API_KEY,
-        'numOfRows': '100', 'pageNo': '1',
-        'inqryDiv': '1',
-        'inqryBgnDt': start_dt, 'inqryEndDt': end_dt,
-        'type': 'json',
+    params = {
+        'ServiceKey': DATA_API_KEY,
+        'numOfRows':  '200',
+        'pageNo':     '1',
+        'inqryDiv':   '1',
+        'inqryBgnDt': start_dt,
+        'inqryEndDt': end_dt,
+        'type':       'json',
     }
-    for kw in KEYWORDS:
-        _collect(BID_LIST_URL, {**base, 'bidNtceNm': kw}, results, seen, 'bidNtceNo')
-    _collect(BID_LIST_URL, {**base, 'dtilPrdlstCd': PRDLST_CD}, results, seen, 'bidNtceNo')
+    items = _get(BID_URL, params)
 
-    # 상세 조회 (개요·사업기간)
-    for item in results[:MAX_DETAIL]:
-        dtl = _get(BID_DTL_URL, {
-            'serviceKey': DATA_API_KEY,
-            'bidNtceNo':  item.get('bidNtceNo', ''),
-            'bidNtceOrd': item.get('bidNtceOrd', '00'),
-            'type': 'json',
-        }).get('response', {}).get('body', {}).get('items', {})
-        if isinstance(dtl, list) and dtl:
-            dtl = dtl[0]
-        if isinstance(dtl, dict):
-            item['_dtl'] = dtl
+    # Python에서 키워드 필터링
+    results, seen = [], set()
+    for item in items:
+        name      = item.get('bidNtceNm', '')
+        prdlst    = item.get('prdctDtlList', '')
+        uid       = item.get('bidNtceNo', '')
+        if uid and uid not in seen:
+            if match_keywords(name) or match_prdlst(prdlst):
+                seen.add(uid)
+                results.append(item)
+
+    print(f'  입찰공고 전체 {len(items)}건 중 필터링 후 {len(results)}건')
     return results
 
 
 # ─────────────────────────────────────────────────────────
-# 4. 사전규격공고 수집 + 상세 조회
+# 5. 사전규격공고 수집
 # ─────────────────────────────────────────────────────────
 def fetch_pre_notices(start_dt, end_dt):
-    results, seen = [], set()
-    base = {
-        'serviceKey': DATA_API_KEY,
-        'numOfRows': '100', 'pageNo': '1',
-        'inqryBgnDt': start_dt[:8],
-        'inqryEndDt': end_dt[:8],
-        'type': 'json',
+    params = {
+        'ServiceKey': DATA_API_KEY,
+        'numOfRows':  '200',
+        'pageNo':     '1',
+        'inqryDiv':   '1',
+        'inqryBgnDt': start_dt,
+        'inqryEndDt': end_dt,
+        'type':       'json',
     }
-    for kw in KEYWORDS:
-        _collect(PRE_URL, {**base, 'prdctClsfcNoNm': kw}, results, seen, 'bfSpecRgstNo')
-    _collect(PRE_URL, {**base, 'dtilPrdlstCd': PRDLST_CD}, results, seen, 'bfSpecRgstNo')
+    items = _get(PRE_URL, params)
 
-    # 상세 조회
-    for item in results[:MAX_DETAIL]:
-        dtl = _get(PRE_DTL_URL, {
-            'serviceKey':  DATA_API_KEY,
-            'bfSpecRgstNo': item.get('bfSpecRgstNo', ''),
-            'type': 'json',
-        }).get('response', {}).get('body', {}).get('items', {})
-        if isinstance(dtl, list) and dtl:
-            dtl = dtl[0]
-        if isinstance(dtl, dict):
-            item['_dtl'] = dtl
+    # Python에서 키워드 필터링 (품명 + 세부품명번호)
+    results, seen = [], set()
+    for item in items:
+        name   = item.get('prdctClsfcNoNm', '')
+        prdlst = item.get('prdctDtlList', '')
+        uid    = item.get('bfSpecRgstNo', '')
+        if uid and uid not in seen:
+            if match_keywords(name) or match_prdlst(prdlst):
+                seen.add(uid)
+                results.append(item)
+
+    print(f'  사전규격공고 전체 {len(items)}건 중 필터링 후 {len(results)}건')
     return results
 
 
 # ─────────────────────────────────────────────────────────
-# 5. 포맷 헬퍼
+# 6. 포맷 헬퍼
 # ─────────────────────────────────────────────────────────
 def fmt_money(val):
     try:
@@ -154,15 +159,9 @@ def fmt_date(val):
     if len(s) >= 8:  return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
     return val or '-'
 
-def clip(text, n=120):
-    """긴 텍스트 말줄임"""
-    if not text: return ''
-    text = str(text).replace('\n', ' ').replace('\r', ' ').strip()
-    return text[:n] + '…' if len(text) > n else text
-
 
 # ─────────────────────────────────────────────────────────
-# 6. HTML 생성
+# 7. HTML 생성
 # ─────────────────────────────────────────────────────────
 STYLE = """
 <style>
@@ -181,18 +180,16 @@ STYLE = """
   .card-title{font-size:13px;font-weight:600;color:#1a4b8c}
   .card-title a{color:#1a4b8c;text-decoration:none}
   .card-title a:hover{text-decoration:underline}
-  .card-body{padding:10px 14px;font-size:12px;color:#444;line-height:1.8}
-  .meta{display:flex;flex-wrap:wrap;gap:16px;margin-top:6px}
+  .card-body{padding:10px 14px}
+  .meta{display:flex;flex-wrap:wrap;gap:16px}
   .meta-item{display:flex;flex-direction:column}
   .meta-label{font-size:10px;color:#999;margin-bottom:2px}
   .meta-value{font-size:12px;color:#222;font-weight:500}
   .badge{display:inline-block;background:#e8f0fe;color:#1a4b8c;
-         border-radius:3px;padding:1px 6px;font-size:11px;font-weight:600}
+         border-radius:3px;padding:1px 8px;font-size:11px;margin-left:6px}
   .empty{color:#999;font-size:12px;padding:12px 0}
   .ftr{background:#f5f6fa;padding:12px 24px;font-size:11px;
        color:#aaa;border-top:1px solid #eee}
-  .ovw{color:#555;font-size:12px;margin-top:6px;line-height:1.6;
-       border-top:1px solid #eee;padding-top:8px}
 </style>
 """
 
@@ -201,46 +198,29 @@ def bid_cards(items):
         return '<p class="empty">해당 기간 공고 없음</p>'
     cards = []
     for it in items:
-        dtl      = it.get('_dtl', {})
         name     = it.get('bidNtceNm', '-')
-        url      = it.get('bidNtceUrl', '') or dtl.get('bidNtceUrl', '')
+        url      = it.get('ntceSpecDocUrl1', '') or it.get('bidNtceUrl', '')
         org      = it.get('ntceInsttNm', '-')
-        money    = fmt_money(it.get('presmptPrce','') or it.get('asignBdgtAmt','')
-                             or dtl.get('presmptPrce',''))
-        deadline = fmt_date(it.get('bidClseDt','') or it.get('opengDt','')
-                            or dtl.get('bidClseDt',''))
+        money    = fmt_money(it.get('presmptPrce', '') or it.get('asignBdgtAmt', ''))
+        deadline = fmt_date(it.get('bidClseDt', '') or it.get('opengDt', ''))
         no       = it.get('bidNtceNo', '-')
-
-        # 개요
-        overview = clip(dtl.get('ntcContents','') or dtl.get('dtlContents','')
-                        or it.get('ntcContents',''))
-        # 사업기간
-        period   = (dtl.get('cntrctPerdDt','') or dtl.get('cntrctPrdDt','')
-                    or it.get('cntrctPerdDt',''))
-        period_str = fmt_date(period) if period else '-'
-
-        title_html = (f'<a href="{url}" target="_blank">{name}</a>' if url else name)
-
-        ovw_html = (f'<div class="ovw">📄 {overview}</div>' if overview else '')
-
+        g2b_url  = f"https://www.g2b.go.kr:8101/ep/invitation/publish/bidInfoDtl.do?bidno={no}&bidseq=000"
+        title    = f'<a href="{g2b_url}" target="_blank">{name}</a>'
         cards.append(f"""
 <div class="card">
   <div class="card-head">
-    <span class="card-title">{title_html}</span>
+    <span class="card-title">{title}</span>
     <span style="font-size:11px;color:#888">{no}</span>
   </div>
   <div class="card-body">
     <div class="meta">
       <div class="meta-item"><span class="meta-label">발주처</span>
         <span class="meta-value">{org}</span></div>
-      <div class="meta-item"><span class="meta-label">금액</span>
-        <span class="meta-value">{money}</span></div>
-      <div class="meta-item"><span class="meta-label">사업기간</span>
-        <span class="meta-value">{period_str}</span></div>
-      <div class="meta-item"><span class="meta-label">제안서 마감</span>
+      <div class="meta-item"><span class="meta-label">금액(추정)</span>
+        <span class="meta-value">{fmt_money(it.get('presmptPrce',''))}</span></div>
+      <div class="meta-item"><span class="meta-label">입찰마감</span>
         <span class="meta-value">{deadline}</span></div>
     </div>
-    {ovw_html}
   </div>
 </div>""")
     return '\n'.join(cards)
@@ -251,21 +231,11 @@ def pre_cards(items):
         return '<p class="empty">해당 기간 공고 없음</p>'
     cards = []
     for it in items:
-        dtl      = it.get('_dtl', {})
-        name     = it.get('prdctClsfcNoNm','') or it.get('bfSpecRgstNo','-')
-        org      = it.get('ntceInsttNm', '-')
-        money    = fmt_money(it.get('totPrce','') or it.get('asignBdgtAmt','')
-                             or dtl.get('totPrce',''))
-        deadline = fmt_date(it.get('opninRcptDdlnDt','') or it.get('rgstDt','')
-                            or dtl.get('opninRcptDdlnDt',''))
+        name     = it.get('prdctClsfcNoNm', '-')
+        org      = it.get('orderInsttNm', '-')
+        money    = fmt_money(it.get('asignBdgtAmt', ''))
+        deadline = fmt_date(it.get('opninRgstClseDt', ''))
         no       = it.get('bfSpecRgstNo', '-')
-        overview = clip(dtl.get('bfSpecContents','') or dtl.get('dtlContents','')
-                        or it.get('bfSpecContents',''))
-        period   = (dtl.get('cntrctPerdDt','') or dtl.get('cntrctPrdDt','')
-                    or it.get('cntrctPerdDt',''))
-        period_str = fmt_date(period) if period else '-'
-        ovw_html = (f'<div class="ovw">📄 {overview}</div>' if overview else '')
-
         cards.append(f"""
 <div class="card">
   <div class="card-head">
@@ -276,14 +246,11 @@ def pre_cards(items):
     <div class="meta">
       <div class="meta-item"><span class="meta-label">발주처</span>
         <span class="meta-value">{org}</span></div>
-      <div class="meta-item"><span class="meta-label">금액</span>
+      <div class="meta-item"><span class="meta-label">배정예산</span>
         <span class="meta-value">{money}</span></div>
-      <div class="meta-item"><span class="meta-label">사업기간</span>
-        <span class="meta-value">{period_str}</span></div>
       <div class="meta-item"><span class="meta-label">의견마감</span>
         <span class="meta-value">{deadline}</span></div>
     </div>
-    {ovw_html}
   </div>
 </div>""")
     return '\n'.join(cards)
@@ -302,9 +269,9 @@ def make_html(bid_list, pre_list, today_str, start_dt, end_dt):
        &nbsp;|&nbsp; 조회기간: {period}</p>
   </div>
   <div class="body">
-    <div class="sec">① 입찰공고 <span class="badge">{len(bid_list)}건</span></div>
+    <div class="sec">① 입찰공고<span class="badge">{len(bid_list)}건</span></div>
     {bid_cards(bid_list)}
-    <div class="sec">② 사전규격공고 <span class="badge">{len(pre_list)}건</span></div>
+    <div class="sec">② 사전규격공고<span class="badge">{len(pre_list)}건</span></div>
     {pre_cards(pre_list)}
   </div>
   <div class="ftr">
@@ -329,7 +296,7 @@ def make_empty_html(today_str):
 
 
 # ─────────────────────────────────────────────────────────
-# 7. 이메일 발송
+# 8. 이메일 발송
 # ─────────────────────────────────────────────────────────
 def send_email(subject, html_body):
     recipients = [r.strip() for r in MAIL_TO.split(',')]
@@ -349,7 +316,7 @@ def send_email(subject, html_body):
 
 
 # ─────────────────────────────────────────────────────────
-# 8. 메인
+# 9. 메인
 # ─────────────────────────────────────────────────────────
 def main():
     today     = datetime.now(KST)
@@ -363,7 +330,7 @@ def main():
     pre_list = fetch_pre_notices(start_dt, end_dt)
     total    = len(bid_list) + len(pre_list)
 
-    print(f'  입찰공고 {len(bid_list)}건 / 사전규격공고 {len(pre_list)}건 (총 {total}건)')
+    print(f'  최종: 입찰공고 {len(bid_list)}건 / 사전규격공고 {len(pre_list)}건 (총 {total}건)')
 
     if total == 0:
         subject   = f'[나라장터] {today_str} 신규 공고 없음'

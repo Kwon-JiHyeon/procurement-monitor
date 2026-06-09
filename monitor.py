@@ -119,7 +119,7 @@ def make_html(bid_list, pre_list, today_str):
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">발주처 : {org}</p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">금액 : {money}</p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">제안서 마감일 : {deadline}</p>
-<p style="{font}font-size:13px;margin:0 0 16px 0;color:#222">공고 링크 : <a href="{link}" style="color:#1B3F7A">{link}</a></p>
+<p style="{font}font-size:13px;margin:0 0 16px 0;color:#222">공고 링크 : {link}</p>
 """
 
     if not bid_list:

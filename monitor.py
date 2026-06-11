@@ -79,7 +79,6 @@ def fetch_bid_notices(start_dt, end_dt):
         'ServiceKey': DATA_API_KEY, 'numOfRows': '200',
         'inqryDiv': '1', 'inqryBgnDt': start_dt, 'inqryEndDt': end_dt, 'type': 'json',
     }
-    # 전체 목록 → 키워드 필터링
     all_items = _fetch_all(BID_URL, base, 'bidNtceNo')
     results, seen = [], set()
     for it in all_items:
@@ -87,17 +86,9 @@ def fetch_bid_notices(start_dt, end_dt):
         if uid and uid not in seen and match_keywords(it.get('bidNtceNm', '')):
             seen.add(uid)
             results.append(it)
-
-    # 세부품명번호로 별도 조회
-    prd_items, _ = _get_page(BID_URL, {**base, 'pageNo': '1', 'dtilPrdlstCd': PRDLST_CD})
-    for it in prd_items:
-        uid = it.get('bidNtceNo', '')
-        if uid and uid not in seen:
-            seen.add(uid)
-            results.append(it)
-    if prd_items:
-        print(f'  세부품명번호 조회: {len(prd_items)}건 추가')
-
+    if all_items:
+        sample = all_items[0]
+        print(f'  필드 목록: {list(sample.keys())}')            
     print(f'  입찰공고 최종: {len(results)}건')
     return results
 

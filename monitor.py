@@ -68,6 +68,8 @@ def fetch_bid_notices(start_dt, end_dt):
         if uid and uid not in seen:
             if match_keywords(it.get('bidNtceNm','')) or match_prdlst(it.get('prdctDtlList','')):
                 seen.add(uid); results.append(it)
+    for it in items[:3]:
+        print(f'  샘플: {it.get("bidNtceNo")} / {it.get("bidNtceNm")} / prdctDtlList={it.get("prdctDtlList")}')
     print(f'  입찰공고 전체 {len(items)}건 → 필터 {len(results)}건')
     return results
 

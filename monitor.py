@@ -26,6 +26,7 @@ BID_URL = 'http://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancLi
 PRE_URL = 'http://apis.data.go.kr/1230000/ao/HrcspSsstndrdInfoService/getPublicPrcureThngInfoServc'
 
 KST = ZoneInfo('Asia/Seoul')
+MAX_PAGES = 10
 
 
 def get_date_range():
@@ -41,50 +42,79 @@ def match_keywords(text):
     t = str(text or '').upper()
     return any(kw.upper() in t for kw in KEYWORDS)
 
-def match_prdlst(s):
-    return PRDLST_CD in str(s or '')
-
-def _get(url, params):
+def _get_page(url, params):
     try:
         r = requests.get(url, params=params, timeout=30)
         r.raise_for_status()
         body  = r.json().get('response', {}).get('body', {})
+        total = int(body.get('totalCount', 0))
         items = body.get('items', [])
         if isinstance(items, dict):
             items = [items]
-        return items or []
+        return items or [], total
     except Exception as e:
         print(f'  ⚠ API 오류: {e}')
-        return []
+        return [], 0
+
+def _fetch_all(url, base_params, id_key):
+    all_items, seen = [], set()
+    page = 1
+    while page <= MAX_PAGES:
+        items, total = _get_page(url, {**base_params, 'pageNo': str(page)})
+        if not items:
+            break
+        for it in items:
+            uid = it.get(id_key, '')
+            if uid and uid not in seen:
+                seen.add(uid)
+                all_items.append(it)
+        print(f'  페이지 {page}: {len(items)}건 (누적 {len(all_items)}건 / 전체 {total}건)')
+        if len(all_items) >= total:
+            break
+        page += 1
+    return all_items
 
 def fetch_bid_notices(start_dt, end_dt):
-    items = _get(BID_URL, {
-        'ServiceKey': DATA_API_KEY, 'numOfRows': '200', 'pageNo': '1',
+    base = {
+        'ServiceKey': DATA_API_KEY, 'numOfRows': '200',
         'inqryDiv': '1', 'inqryBgnDt': start_dt, 'inqryEndDt': end_dt, 'type': 'json',
-    })
+    }
+    # 전체 목록 → 키워드 필터링
+    all_items = _fetch_all(BID_URL, base, 'bidNtceNo')
     results, seen = [], set()
-    for it in items:
+    for it in all_items:
+        uid = it.get('bidNtceNo', '')
+        if uid and uid not in seen and match_keywords(it.get('bidNtceNm', '')):
+            seen.add(uid)
+            results.append(it)
+
+    # 세부품명번호로 별도 조회
+    prd_items, _ = _get_page(BID_URL, {**base, 'pageNo': '1', 'dtilPrdlstCd': PRDLST_CD})
+    for it in prd_items:
         uid = it.get('bidNtceNo', '')
         if uid and uid not in seen:
-            if match_keywords(it.get('bidNtceNm','')) or match_prdlst(it.get('prdctDtlList','')):
-                seen.add(uid); results.append(it)
-    for it in items[:3]:
-        print(f'  샘플: {it.get("bidNtceNo")} / {it.get("bidNtceNm")} / prdctDtlList={it.get("prdctDtlList")}')
-    print(f'  입찰공고 전체 {len(items)}건 → 필터 {len(results)}건')
+            seen.add(uid)
+            results.append(it)
+    if prd_items:
+        print(f'  세부품명번호 조회: {len(prd_items)}건 추가')
+
+    print(f'  입찰공고 최종: {len(results)}건')
     return results
 
 def fetch_pre_notices(start_dt, end_dt):
-    items = _get(PRE_URL, {
-        'ServiceKey': DATA_API_KEY, 'numOfRows': '200', 'pageNo': '1',
+    base = {
+        'ServiceKey': DATA_API_KEY, 'numOfRows': '200',
         'inqryDiv': '1', 'inqryBgnDt': start_dt, 'inqryEndDt': end_dt, 'type': 'json',
-    })
+    }
+    all_items = _fetch_all(PRE_URL, base, 'bfSpecRgstNo')
     results, seen = [], set()
-    for it in items:
+    for it in all_items:
         uid = it.get('bfSpecRgstNo', '')
         if uid and uid not in seen:
-            if match_keywords(it.get('prdctClsfcNoNm','')) or match_prdlst(it.get('prdctDtlList','')):
-                seen.add(uid); results.append(it)
-    print(f'  사전규격 전체 {len(items)}건 → 필터 {len(results)}건')
+            if match_keywords(it.get('prdctClsfcNoNm', '')) or PRDLST_CD in str(it):
+                seen.add(uid)
+                results.append(it)
+    print(f'  사전규격 최종: {len(results)}건')
     return results
 
 def fmt_money(val):
@@ -118,7 +148,6 @@ def make_html(bid_list, pre_list, today_str):
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">제안서 마감일 : {deadline}</p>
 <p style="{font}font-size:13px;margin:0 0 16px 0;color:#222">공고번호 : {no}</p>
 """
-
     if not bid_list:
         bid_section = f'<p style="{font}font-size:13px;color:#888;margin:0 0 16px 0">해당 기간 입찰공고 없음</p>'
 
@@ -136,7 +165,6 @@ def make_html(bid_list, pre_list, today_str):
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">의견 마감일 : {deadline}</p>
 <p style="{font}font-size:13px;margin:0 0 16px 0;color:#222">공고번호 : {no}</p>
 """
-
     if not pre_list:
         pre_section = f'<p style="{font}font-size:13px;color:#888;margin:0 0 16px 0">해당 기간 사전규격공고 없음</p>'
 

@@ -19,7 +19,7 @@ SMTP_PASS    = os.environ['SMTP_PASSWORD']
 MAIL_FROM    = os.environ['MAIL_FROM']
 MAIL_TO      = os.environ['MAIL_TO']
 
-KEYWORDS  = ['ISP', 'ISMP', '정보화전략']
+KEYWORDS  = ['ISP', 'ISMP', '정보화전략', '정보전략계획']
 PRDLST_CD = '8010150701'
 
 BID_URL = 'http://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServc'
@@ -41,6 +41,19 @@ def get_date_range():
 def match_keywords(text):
     t = str(text or '').upper()
     return any(kw.upper() in t for kw in KEYWORDS)
+
+def match_item(it):
+    """공고명, 품목분류명, 구매물품목록에서 키워드 또는 세부품명번호 매칭"""
+    # 공고명 키워드 검색
+    if match_keywords(it.get('bidNtceNm', '')):
+        return True
+    # 공공조달분류명 키워드 검색
+    if match_keywords(it.get('pubPrcrmntClsfcNm', '')):
+        return True
+    # 구매목적물품목록에서 세부품명번호 검색
+    if PRDLST_CD in str(it.get('purchsObjPrdctList', '') or ''):
+        return True
+    return False
 
 def _get_page(url, params):
     try:
@@ -83,12 +96,10 @@ def fetch_bid_notices(start_dt, end_dt):
     results, seen = [], set()
     for it in all_items:
         uid = it.get('bidNtceNo', '')
-        if uid and uid not in seen and match_keywords(it.get('bidNtceNm', '')):
+        if uid and uid not in seen and match_item(it):
             seen.add(uid)
             results.append(it)
-    if all_items:
-        sample = all_items[0]
-        print(f'  필드 목록: {list(sample.keys())}')            
+            print(f'  ✓ {it.get("bidNtceNo")} / {it.get("bidNtceNm")} / 분류:{it.get("pubPrcrmntClsfcNm")}')
     print(f'  입찰공고 최종: {len(results)}건')
     return results
 
@@ -173,7 +184,7 @@ def make_html(bid_list, pre_list, today_str):
   <p style="{font}font-size:15px;font-weight:bold;margin:0 0 12px 0">※ 사전규격</p>
   {pre_section}
   {divider}
-  <p style="{font}font-size:11px;color:#999;margin:0">검색 키워드: ISP · ISMP · 정보화전략 &nbsp;|&nbsp; 세부품명번호: {PRDLST_CD} &nbsp;|&nbsp; 자동발송 (GitHub Actions)</p>
+  <p style="{font}font-size:11px;color:#999;margin:0">검색 키워드: ISP · ISMP · 정보화전략 · 정보전략계획 &nbsp;|&nbsp; 세부품명번호: {PRDLST_CD} &nbsp;|&nbsp; 자동발송 (GitHub Actions)</p>
 </div>
 </body></html>"""
 
@@ -187,7 +198,7 @@ def make_empty_html(today_str):
   <p style="{font}font-size:13px;color:#444;margin:0 0 20px 0">공고 확인 : https://www.g2b.go.kr</p>
   <p style="{font}font-size:13px;color:#888;margin:0 0 20px 0">해당 기간 내 신규 공고가 없습니다.</p>
   <hr style="border:none;border-top:1px solid #ddd;margin:16px 0">
-  <p style="{font}font-size:11px;color:#999;margin:0">검색 키워드: ISP · ISMP · 정보화전략 &nbsp;|&nbsp; 세부품명번호: {PRDLST_CD}</p>
+  <p style="{font}font-size:11px;color:#999;margin:0">검색 키워드: ISP · ISMP · 정보화전략 · 정보전략계획 &nbsp;|&nbsp; 세부품명번호: {PRDLST_CD}</p>
 </div>
 </body></html>"""
 

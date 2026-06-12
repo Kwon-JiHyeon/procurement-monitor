@@ -44,6 +44,9 @@ def match_keywords(text):
 
 def match_item(it):
     """공고명, 품목분류명, 구매물품목록에서 키워드 또는 세부품명번호 매칭"""
+    # 취소공고 제외
+    if '취소' in str(it.get('ntceKindNm', '')):
+        return False
     # 공고명 키워드 검색
     if match_keywords(it.get('bidNtceNm', '')):
         return True

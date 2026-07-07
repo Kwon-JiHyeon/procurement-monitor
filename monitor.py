@@ -19,7 +19,7 @@ SMTP_PASS    = os.environ['SMTP_PASSWORD']
 MAIL_FROM    = os.environ['MAIL_FROM']
 MAIL_TO      = os.environ['MAIL_TO']
 
-KEYWORDS  = ['ISP', 'ISMP', '정보화전략', '정보전략계획']
+KEYWORDS  = ['ISP', 'ISMP', '정보화전략', '정보전략계획', '온톨로지', 'RAG']
 PRDLST_CD = '8010150701'
 
 BID_URL = 'http://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServc'
@@ -187,7 +187,7 @@ def make_html(bid_list, pre_list, today_str):
   <p style="{font}font-size:15px;font-weight:bold;margin:0 0 12px 0">※ 사전규격</p>
   {pre_section}
   {divider}
-  <p style="{font}font-size:11px;color:#999;margin:0">검색 키워드: ISP · ISMP · 정보화전략 · 정보전략계획 &nbsp;|&nbsp; 세부품명번호: {PRDLST_CD} &nbsp;|&nbsp; 자동발송 (GitHub Actions)</p>
+  <p style="{font}font-size:11px;color:#999;margin:0">검색 키워드: ISP · ISMP · 정보화전략 · 정보전략계획 · 온톨로지 · RAG &nbsp;|&nbsp; 세부품명번호: {PRDLST_CD} &nbsp;|&nbsp; 자동발송 (GitHub Actions)</p>
 </div>
 </body></html>"""
 
@@ -201,7 +201,7 @@ def make_empty_html(today_str):
   <p style="{font}font-size:13px;color:#444;margin:0 0 20px 0">공고 확인 : https://www.g2b.go.kr</p>
   <p style="{font}font-size:13px;color:#888;margin:0 0 20px 0">해당 기간 내 신규 공고가 없습니다.</p>
   <hr style="border:none;border-top:1px solid #ddd;margin:16px 0">
-  <p style="{font}font-size:11px;color:#999;margin:0">검색 키워드: ISP · ISMP · 정보화전략 · 정보전략계획 &nbsp;|&nbsp; 세부품명번호: {PRDLST_CD}</p>
+  <p style="{font}font-size:11px;color:#999;margin:0">검색 키워드: ISP · ISMP · 정보화전략 · 정보전략계획 · 온톨로지 · RAG &nbsp;|&nbsp; 세부품명번호: {PRDLST_CD}</p>
 </div>
 </body></html>"""
 

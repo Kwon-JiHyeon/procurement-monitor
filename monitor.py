@@ -6,6 +6,7 @@
 import os
 import smtplib
 import requests
+import time
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -25,8 +26,10 @@ PRDLST_CD = '8010150701'
 BID_URL = 'http://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServc'
 PRE_URL = 'http://apis.data.go.kr/1230000/ao/HrcspSsstndrdInfoService/getPublicPrcureThngInfoServc'
 
-KST = ZoneInfo('Asia/Seoul')
+KST       = ZoneInfo('Asia/Seoul')
 MAX_PAGES = 10
+RETRY     = 3       # 최대 재시도 횟수
+RETRY_WAIT = 180    # 재시도 대기 시간 (초)
 
 
 def get_date_range():
@@ -43,40 +46,42 @@ def match_keywords(text):
     return any(kw.upper() in t for kw in KEYWORDS)
 
 def match_item(it):
-    """공고명, 품목분류명, 구매물품목록에서 키워드 또는 세부품명번호 매칭"""
     # 취소공고 제외
     if '취소' in str(it.get('ntceKindNm', '')):
         return False
-    # 공고명 키워드 검색
     if match_keywords(it.get('bidNtceNm', '')):
         return True
-    # 공공조달분류명 키워드 검색
     if match_keywords(it.get('pubPrcrmntClsfcNm', '')):
         return True
-    # 구매목적물품목록에서 세부품명번호 검색
     if PRDLST_CD in str(it.get('purchsObjPrdctList', '') or ''):
         return True
     return False
 
-def _get_page(url, params):
-    try:
-        r = requests.get(url, params=params, timeout=30)
-        r.raise_for_status()
-        body  = r.json().get('response', {}).get('body', {})
-        total = int(body.get('totalCount', 0))
-        items = body.get('items', [])
-        if isinstance(items, dict):
-            items = [items]
-        return items or [], total
-    except Exception as e:
-        print(f'  ⚠ API 오류: {e}')
-        return [], 0
+def _get_page_with_retry(url, params):
+    """재시도 로직 포함 API 호출"""
+    for attempt in range(1, RETRY + 1):
+        try:
+            r = requests.get(url, params=params, timeout=30)
+            r.raise_for_status()
+            body  = r.json().get('response', {}).get('body', {})
+            total = int(body.get('totalCount', 0))
+            items = body.get('items', [])
+            if isinstance(items, dict):
+                items = [items]
+            return items or [], total
+        except Exception as e:
+            print(f'  ⚠ API 오류 (시도 {attempt}/{RETRY}): {e}')
+            if attempt < RETRY:
+                print(f'  → {RETRY_WAIT}초 후 재시도...')
+                time.sleep(RETRY_WAIT)
+    print(f'  ✗ {RETRY}회 시도 모두 실패')
+    return [], 0
 
 def _fetch_all(url, base_params, id_key):
     all_items, seen = [], set()
     page = 1
     while page <= MAX_PAGES:
-        items, total = _get_page(url, {**base_params, 'pageNo': str(page)})
+        items, total = _get_page_with_retry(url, {**base_params, 'pageNo': str(page)})
         if not items:
             break
         for it in items:
@@ -146,12 +151,15 @@ def make_html(bid_list, pre_list, today_str):
         money    = fmt_money(it.get('presmptPrce','') or it.get('asignBdgtAmt',''))
         deadline = fmt_date(it.get('bidClseDt','') or it.get('opengDt',''))
         no       = it.get('bidNtceNo', '-')
+        ord_     = it.get('bidNtceOrd', '000')
+        link     = f"https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo={no}&bidPbancOrd={ord_}"
         bid_section += f"""
 <p style="{font}margin:0 0 4px 0"><span style="font-size:14px;font-weight:bold">{i}. {name}</span></p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">발주처 : {org}</p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">금액 : {money}</p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">제안서 마감일 : {deadline}</p>
-<p style="{font}font-size:13px;margin:0 0 16px 0;color:#222">공고번호 : {no}</p>
+<p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">공고번호 : {no}</p>
+<p style="{font}font-size:13px;margin:0 0 16px 0;color:#222">공고 링크 : {link}</p>
 """
     if not bid_list:
         bid_section = f'<p style="{font}font-size:13px;color:#888;margin:0 0 16px 0">해당 기간 입찰공고 없음</p>'

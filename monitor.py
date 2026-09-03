@@ -154,7 +154,7 @@ def make_html(bid_list, pre_list, today_str):
         ord_     = it.get('bidNtceOrd', '000')
         link     = f"https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo={no}&bidPbancOrd={ord_}"
         bid_section += f"""
-<p style="{font}margin:0 0 4px 0"><span style="font-size:14px;font-weight:bold">{i}. {name}</span></p>
+<p style="{font}margin:0 0 4px 0"><span style="font-size:14px;font-weight:bold">{i}. <a href="{link}" style="color:#000;text-decoration:none">{name}</a></span></p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">발주처 : {org}</p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">금액 : {money}</p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">제안서 마감일 : {deadline}</p>

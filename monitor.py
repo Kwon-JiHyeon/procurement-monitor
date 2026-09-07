@@ -23,8 +23,8 @@ MAIL_TO      = os.environ['MAIL_TO']
 KEYWORDS  = ['ISP', 'ISMP', '정보화전략', '정보전략계획', '온톨로지', 'RAG']
 PRDLST_CD = '8010150701'
 
-BID_URL = 'http://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServc'
-PRE_URL = 'http://apis.data.go.kr/1230000/ao/HrcspSsstndrdInfoService/getPublicPrcureThngInfoServc'
+BID_URL = 'https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServc'
+PRE_URL = 'https://apis.data.go.kr/1230000/ao/HrcspSsstndrdInfoService/getPublicPrcureThngInfoServc'
 
 KST       = ZoneInfo('Asia/Seoul')
 MAX_PAGES = 10

@@ -159,7 +159,6 @@ def make_html(bid_list, pre_list, today_str):
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">금액 : {money}</p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">제안서 마감일 : {deadline}</p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">공고번호 : {no}</p>
-<p style="{font}font-size:13px;margin:0 0 16px 0;color:#222">공고 링크 : {link}</p>
 """
     if not bid_list:
         bid_section = f'<p style="{font}font-size:13px;color:#888;margin:0 0 16px 0">해당 기간 입찰공고 없음</p>'
@@ -189,7 +188,8 @@ def make_html(bid_list, pre_list, today_str):
 <div style="max-width:700px">
   <p style="{font}font-size:13px;color:#444;margin:0 0 6px 0">안녕하세요 이사님, {today_str} 나라장터 현황입니다.</p>
   <p style="{font}font-size:13px;color:#444;margin:0 0 20px 0">공고 확인 : https://www.g2b.go.kr</p>
-  <p style="{font}font-size:15px;font-weight:bold;margin:0 0 12px 0">※ 입찰공고</p>
+  <p style="{font}font-size:15px;font-weight:bold;margin:0 0 4px 0">※ 입찰공고</p>
+  <p style="{font}font-size:12px;color:#888;margin:0 0 12px 0">※ 입찰공고는 제목을 클릭하면 사이트로 연결됩니다.</p>
   {bid_section}
   {divider}
   <p style="{font}font-size:15px;font-weight:bold;margin:0 0 12px 0">※ 사전규격</p>

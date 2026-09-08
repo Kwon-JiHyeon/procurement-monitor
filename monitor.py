@@ -159,6 +159,7 @@ def make_html(bid_list, pre_list, today_str):
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">금액 : {money}</p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">제안서 마감일 : {deadline}</p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">공고번호 : {no}</p>
+<hr style="border:none;border-top:1px solid #eee;margin:12px 0 16px 0">
 """
     if not bid_list:
         bid_section = f'<p style="{font}font-size:13px;color:#888;margin:0 0 16px 0">해당 기간 입찰공고 없음</p>'
@@ -176,6 +177,7 @@ def make_html(bid_list, pre_list, today_str):
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">금액 : {money}</p>
 <p style="{font}font-size:13px;margin:0 0 2px 0;color:#222">의견 마감일 : {deadline}</p>
 <p style="{font}font-size:13px;margin:0 0 16px 0;color:#222">공고번호 : {no}</p>
+<hr style="border:none;border-top:1px solid #eee;margin:12px 0 16px 0">
 """
     if not pre_list:
         pre_section = f'<p style="{font}font-size:13px;color:#888;margin:0 0 16px 0">해당 기간 사전규격공고 없음</p>'

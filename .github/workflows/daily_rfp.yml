@@ -9,10 +9,19 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: write
 
     steps:
       - name: 코드 체크아웃
         uses: actions/checkout@v4
+
+      - name: 스케줄 자동 중단 방지
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow enable daily_rfp.yml --repo "${{ github.repository }}"
 
       - name: Python 3.12 설정
         uses: actions/setup-python@v5
@@ -25,7 +34,6 @@ jobs:
       - name: RFP 모니터링 실행
         env:
           DATA_GO_API_KEY:   ${{ secrets.DATA_GO_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SMTP_HOST:         ${{ secrets.SMTP_HOST }}
           SMTP_PORT:         ${{ secrets.SMTP_PORT }}
           SMTP_USER:         ${{ secrets.SMTP_USER }}
